@@ -521,7 +521,7 @@ export default function Home() {
                   color="#f97316" bgColor="rgba(249,115,22,0.07)"
                   metrics={[
                     { label: "Fixo/un.", value: fmt(c.custoSDR) },
-                    { label: "Ratio",    value: "2:1" },
+                    { label: "Total/mês", value: fmt(c.numSDRs * c.custoSDR) },
                   ]}
                 />
               </div>
