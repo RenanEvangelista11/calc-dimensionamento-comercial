@@ -278,6 +278,107 @@ export default function Home() {
   const hasData   = c.vMeta > 0 && c.vTicket > 0;
   const isHealthy = c.percCusto > 0 && c.percCusto <= 0.35;
 
+  // ─── Diagnóstico de gargalos ─────────────────────────────────────────────
+
+  const insights = useMemo(() => {
+    if (!hasData || c.custoTotal === 0) return [];
+
+    type Insight = { type: "error" | "warn" | "info"; tag: string; title: string; body: string };
+    const list: Insight[] = [];
+
+    const pFolha  = c.folha / c.custoTotal;
+    const pTraf   = c.trafego / c.custoTotal;
+    const pComis  = c.comisTotal / c.custoTotal;
+
+    // Identifica o maior gargalo entre os três
+    const maiorGargalo = pFolha >= pTraf && pFolha >= pComis ? "folha"
+      : pTraf >= pComis ? "trafego" : "comissao";
+
+    // ── Gargalo principal ──
+    if (maiorGargalo === "folha") {
+      const reducaoPJ    = regime === "clt" ? c.folha - (c.folha / 1.5) : 0;
+      const reducaoRem   = modalidade === "presencial" ? c.folha - (c.folha / 1.25) : 0;
+      const tipo         = c.percCusto > 0.35 ? "error" : "warn";
+      let body = `A folha representa ${pct(pFolha, 0)} do custo total (${fmt(c.folha)}).`;
+      if (regime === "clt" && modalidade === "presencial")
+        body += ` Migrar para PJ remoto reduziria a folha em ~${fmt(reducaoPJ + reducaoRem)} — o maior impacto possível agora.`;
+      else if (regime === "clt")
+        body += ` Migrar para PJ eliminaria o encargo de 50% — economia de ~${fmt(reducaoPJ)}/mês na folha.`;
+      else if (modalidade === "presencial")
+        body += ` Modalidade presencial adiciona 25% ao custo. Remoto economizaria ~${fmt(reducaoRem)}/mês.`;
+      else if (nivelCloser === "lider")
+        body += ` Closer no nível Líder/Gerente custa ${fmt(c.custoCloser)}/mês. Um Sênior entregaria 6 calls/dia com custo ~${fmt(CLOSER_DATA.senior.fixo * REGIME_MULT[regime] * MODAL_MULT[modalidade])}/mês.`;
+      else if (c.numClosers >= 2)
+        body += ` Com ${c.numClosers} closers, melhore a taxa de conversão antes de contratar — cada +5% de conversão reduz o número de calls necessárias.`;
+      else
+        body += ` Avalie o regime (PJ vs CLT) e a modalidade para reduzir o peso fixo.`;
+      list.push({ type: tipo, tag: "GARGALO PRINCIPAL", title: "Folha do time é o maior custo", body });
+    }
+
+    if (maiorGargalo === "trafego") {
+      const tipo = c.percCusto > 0.35 ? "error" : "warn";
+      let body = `Tráfego representa ${pct(pTraf, 0)} do custo total (${fmt(c.trafego)}).`;
+      if (c.vConversao > 0 && c.vConversao < 0.20) {
+        const callsComMelhoraConv = c.vendas / 0.25;
+        const leadsComMelhoraConv = callsComMelhoraConv / SDR_BOOKING_RATE;
+        const economiaLead = (c.leads - leadsComMelhoraConv) * c.vCpl;
+        body += ` Taxa de conversão de ${pct(c.vConversao)} está inflando o volume de leads. Subir para 25% reduziria ~${fmtN(c.leads - leadsComMelhoraConv, 0)} leads/mês — economia de ~${fmt(economiaLead)} em tráfego.`;
+      } else if (c.vCpl > c.vTicket * 0.015) {
+        body += ` CPL de ${fmt(c.vCpl)} está elevado para um ticket de ${fmt(c.vTicket)}. Testar canais orgânicos ou melhorar a qualificação na página de captura pode reduzir o CPL sem mexer no time.`;
+      } else {
+        body += ` Volume de leads alto (${fmtN(c.leads, 0)}/mês). Melhorar a qualificação de leads reduz o volume sem perder vendas.`;
+      }
+      list.push({ type: tipo, tag: "GARGALO PRINCIPAL", title: "Custo de tráfego é o maior peso", body });
+    }
+
+    if (maiorGargalo === "comissao") {
+      const tipo = c.comisRate > 0.05 ? "error" : "warn";
+      let body = `Comissão representa ${pct(pComis, 0)} do custo total (${fmt(c.comisTotal)}).`;
+      if (c.comisRate > 0.05) {
+        body += ` Percentual de ${pct(c.comisRate)} supera o limite saudável de 5% do ticket. `;
+        if (baseCalculo === "cheio") {
+          const comisEntrada = c.vTicket * 0.4 * c.percComis * c.vendas;
+          body += `Mudar a base para entrada de caixa (40%) reduziria para ${fmt(comisEntrada)}/mês — economia de ${fmt(c.comisTotal - comisEntrada)}.`;
+        } else {
+          body += `Revise o percentual de comissão para ficar abaixo de 5% do valor cheio da venda.`;
+        }
+      } else if (baseCalculo === "cheio") {
+        body += ` Calcular sobre entrada de caixa melhoraria o fluxo — a empresa desembolsa menos no mês da venda.`;
+      } else {
+        body += ` Avalie se o percentual está alinhado com o ticket e a margem do produto.`;
+      }
+      list.push({ type: tipo, tag: "GARGALO PRINCIPAL", title: "Comissão é o maior custo", body });
+    }
+
+    // ── Insights secundários (só aparecem se não forem o gargalo principal) ──
+
+    if (maiorGargalo !== "trafego" && c.vConversao > 0 && c.vConversao < 0.15) {
+      list.push({
+        type: "warn", tag: "CONVERSÃO",
+        title: "Taxa de conversão baixa",
+        body: `Conversão de ${pct(c.vConversao)} exige ${fmtN(c.leads, 0)} leads/mês. Cada +5% de conversão reduz o volume de leads necessários e o custo de tráfego proporcionalmente.`,
+      });
+    }
+
+    if (maiorGargalo !== "comissao" && c.comisRate > 0.05) {
+      list.push({
+        type: "error", tag: "COMISSÃO",
+        title: "Comissão acima do limite",
+        body: `${pct(c.comisRate)} do ticket vai para comissão — acima dos 5% saudáveis. ${baseCalculo === "cheio" ? "Mude a base para entrada de caixa para reduzir o desembolso no mês da venda." : "Revise o percentual aplicado."}`,
+      });
+    }
+
+    if (c.percCusto <= 0.35 && c.percCusto > 0) {
+      list.push({
+        type: "info", tag: "SAÚDE",
+        title: "Estrutura dentro do limite",
+        body: `Custo comercial de ${pct(c.percCusto)} está abaixo dos 35%. O maior peso é ${maiorGargalo === "folha" ? "a folha do time" : maiorGargalo === "trafego" ? "o tráfego" : "a comissão"} — fique de olho se a meta crescer.`,
+      });
+    }
+
+    return list;
+  }, [c, hasData, regime, modalidade, nivelCloser, baseCalculo]);
+
   return (
     <div className="flex" style={{ minHeight: "100dvh", background: "#0b0d14", fontFamily: "var(--font-geist), -apple-system, sans-serif" }}>
 
@@ -612,24 +713,29 @@ export default function Home() {
                   ))}
                 </div>
 
-                {/* Alerts */}
-                <div className="mx-5 mb-5 space-y-2">
-                  {c.percCusto > 0.35 && (
-                    <div className="px-4 py-2.5 rounded-xl text-xs" style={{ background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.15)", color: "#fca5a5" }}>
-                      ⚠ Estrutura onerosa — avalie reduzir o nível de contratação ou mudar para PJ remoto
-                    </div>
-                  )}
-                  {c.vConversao > 0 && c.vConversao < 0.15 && (
-                    <div className="px-4 py-2.5 rounded-xl text-xs" style={{ background: "rgba(234,179,8,0.08)", border: "1px solid rgba(234,179,8,0.15)", color: "#fde68a" }}>
-                      ⚠ Conversão abaixo de 15% — volume de leads e custo de tráfego sobem proporcionalmente
-                    </div>
-                  )}
-                  {c.numClosers > 1 && (
-                    <div className="px-4 py-2.5 rounded-xl text-xs" style={{ background: "rgba(99,102,241,0.08)", border: "1px solid rgba(99,102,241,0.15)", color: "#c4b5fd" }}>
-                      ℹ {c.numClosers} closers necessários — garanta {c.numSDRs} SDRs para manter a agenda cheia
-                    </div>
-                  )}
-                </div>
+                {/* Insights de gargalo */}
+                {insights.length > 0 && (
+                  <div className="mx-5 mb-5 space-y-2">
+                    {insights.map((ins, i) => {
+                      const colors = {
+                        error: { bg: "rgba(239,68,68,0.08)",  border: "rgba(239,68,68,0.18)",  tag: "#f87171",  text: "#fca5a5" },
+                        warn:  { bg: "rgba(234,179,8,0.08)",  border: "rgba(234,179,8,0.18)",  tag: "#fbbf24",  text: "#fde68a" },
+                        info:  { bg: "rgba(99,102,241,0.08)", border: "rgba(99,102,241,0.18)", tag: "#a78bfa",  text: "#c4b5fd" },
+                      }[ins.type];
+                      return (
+                        <div key={i} className="rounded-xl overflow-hidden" style={{ border: `1px solid ${colors.border}` }}>
+                          <div className="px-3 py-1.5 flex items-center gap-2" style={{ background: `${colors.bg}` }}>
+                            <span className="text-xs font-bold tracking-widest" style={{ color: colors.tag }}>{ins.tag}</span>
+                          </div>
+                          <div className="px-4 py-3" style={{ background: "rgba(255,255,255,0.02)" }}>
+                            <p className="text-xs font-semibold text-white mb-1">{ins.title}</p>
+                            <p className="text-xs leading-relaxed" style={{ color: colors.text }}>{ins.body}</p>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
 
               <div className="h-10" />
