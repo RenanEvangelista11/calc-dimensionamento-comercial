@@ -2,20 +2,6 @@
 
 import { useState, useMemo } from "react";
 
-// ─── Types ────────────────────────────────────────────────────────────────────
-
-interface Block2 {
-  regime: "pj" | "clt";
-  modalidade: "remoto" | "presencial";
-  nivelCloser: "junior" | "pleno" | "senior" | "lider";
-  nivelSDR: "junior" | "pleno" | "senior" | "senior_avancado";
-}
-
-interface Block3 {
-  baseCalculo: "cheio" | "entrada";
-  percentualEntrada: number;
-}
-
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const CLOSER_DATA = {
@@ -29,83 +15,102 @@ const SDR_DATA = {
   junior:          { fixo: 1900, label: "Júnior" },
   pleno:           { fixo: 2500, label: "Pleno" },
   senior:          { fixo: 3000, label: "Sênior" },
-  senior_avancado: { fixo: 3200, label: "Sênior Avançado" },
+  senior_avancado: { fixo: 3200, label: "Sr. Avançado" },
 };
 
-const REGIME_MULT  = { pj: 1, clt: 1.5 };
-const MODAL_MULT   = { remoto: 1, presencial: 1.25 };
-const DIAS_UTEIS   = 22;
-const SDR_BOOKING_RATE = 0.25;
+type CloserNivel = keyof typeof CLOSER_DATA;
+type SDRNivel = keyof typeof SDR_DATA;
+type Regime = "pj" | "clt";
+type Modalidade = "remoto" | "presencial";
+type BaseCalculo = "cheio" | "entrada";
 
-function getCommissionRate(ticket: number): number {
+const REGIME_MULT: Record<Regime, number>     = { pj: 1, clt: 1.5 };
+const MODAL_MULT: Record<Modalidade, number>  = { remoto: 1, presencial: 1.25 };
+const SDR_BOOKING_RATE = 0.25;
+const DIAS_UTEIS = 22;
+
+function getCommissionRate(ticket: number) {
   if (ticket <= 5000)  return 0.05;
   if (ticket <= 15000) return 0.035;
   if (ticket <= 30000) return 0.025;
   return 0.02;
 }
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-
 const fmt = (n: number) =>
   n.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
 
-const fmtN = (n: number, decimals = 0) => n.toLocaleString("pt-BR", { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+const fmtN = (n: number, d = 0) =>
+  n.toLocaleString("pt-BR", { minimumFractionDigits: d, maximumFractionDigits: d });
 
-// ─── Sub-components ───────────────────────────────────────────────────────────
+const pct = (n: number, d = 1) => `${fmtN(n * 100, d)}%`;
 
-function InputField({
-  label, prefix, suffix, value, onChange, placeholder, hint,
-}: {
-  label: string; prefix?: string; suffix?: string;
-  value: string; onChange: (v: string) => void;
-  placeholder?: string; hint?: string;
-}) {
+// ─── UI Components ────────────────────────────────────────────────────────────
+
+function SidebarSection({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div>
-      <label className="block text-xs font-medium mb-1.5" style={{ color: "rgba(255,255,255,0.5)" }}>
-        {label}
-      </label>
-      <div className="relative">
-        {prefix && (
-          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm select-none" style={{ color: "rgba(255,255,255,0.35)" }}>
-            {prefix}
-          </span>
-        )}
-        <input
-          type="number"
-          className="input-field"
-          style={{ paddingLeft: prefix ? "36px" : undefined, paddingRight: suffix ? "40px" : undefined }}
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          placeholder={placeholder ?? "0"}
-        />
-        {suffix && (
-          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm select-none" style={{ color: "rgba(255,255,255,0.35)" }}>
-            {suffix}
-          </span>
-        )}
+    <div className="border-b" style={{ borderColor: "rgba(255,255,255,0.06)" }}>
+      <div className="px-5 pt-5 pb-4">
+        <p className="text-xs font-semibold mb-4" style={{ color: "rgba(255,255,255,0.28)", letterSpacing: "0.12em" }}>
+          {title}
+        </p>
+        <div className="space-y-3">{children}</div>
       </div>
-      {hint && <p className="text-xs mt-1" style={{ color: "rgba(255,255,255,0.28)" }}>{hint}</p>}
     </div>
   );
 }
 
-function Toggle({
+function NumberInput({
+  label, value, onChange, step = 1, min = 0,
+}: {
+  label: string; value: string; onChange: (v: string) => void; step?: number; min?: number;
+}) {
+  const increment = () => onChange(String(Math.max(min, (parseFloat(value) || 0) + step)));
+  const decrement = () => onChange(String(Math.max(min, (parseFloat(value) || 0) - step)));
+
+  return (
+    <div>
+      <label className="block text-xs mb-1.5" style={{ color: "rgba(255,255,255,0.45)" }}>{label}</label>
+      <div className="flex items-center rounded-lg overflow-hidden"
+        style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)" }}>
+        <input
+          type="number"
+          min={min}
+          step={step}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder="0"
+          className="flex-1 bg-transparent px-3 py-2.5 text-sm text-white outline-none min-w-0"
+          style={{ fontFamily: "'Fira Code', monospace" }}
+        />
+        <div className="flex flex-col border-l flex-shrink-0" style={{ borderColor: "rgba(255,255,255,0.08)" }}>
+          <button onClick={increment} className="px-2.5 py-1 text-xs leading-none transition-colors hover:bg-white/10 cursor-pointer" style={{ color: "rgba(255,255,255,0.4)" }}>▲</button>
+          <button onClick={decrement} className="px-2.5 py-1 text-xs leading-none transition-colors hover:bg-white/10 cursor-pointer border-t" style={{ color: "rgba(255,255,255,0.4)", borderColor: "rgba(255,255,255,0.08)" }}>▼</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ToggleInput({
   label, options, value, onChange,
 }: {
-  label: string;
-  options: { value: string; label: string }[];
-  value: string;
-  onChange: (v: string) => void;
+  label: string; options: { value: string; label: string }[]; value: string; onChange: (v: string) => void;
 }) {
   return (
     <div>
-      <label className="block text-xs font-medium mb-1.5" style={{ color: "rgba(255,255,255,0.5)" }}>
-        {label}
-      </label>
-      <div className="toggle-btn">
-        {options.map((o) => (
-          <button key={o.value} onClick={() => onChange(o.value)} className={value === o.value ? "active" : ""}>
+      <label className="block text-xs mb-1.5" style={{ color: "rgba(255,255,255,0.45)" }}>{label}</label>
+      <div className="flex rounded-lg overflow-hidden" style={{ border: "1px solid rgba(255,255,255,0.08)" }}>
+        {options.map((o, i) => (
+          <button
+            key={o.value}
+            onClick={() => onChange(o.value)}
+            className="flex-1 py-2 text-xs font-medium transition-all cursor-pointer"
+            style={{
+              background: value === o.value ? "rgba(99,102,241,0.2)" : "rgba(255,255,255,0.03)",
+              color: value === o.value ? "#a78bfa" : "rgba(255,255,255,0.4)",
+              borderRight: i < options.length - 1 ? "1px solid rgba(255,255,255,0.08)" : "none",
+            }}
+          >
             {o.label}
           </button>
         ))}
@@ -114,525 +119,524 @@ function Toggle({
   );
 }
 
-function SelectField({
+function SelectInput({
   label, options, value, onChange,
 }: {
-  label: string;
-  options: { value: string; label: string }[];
-  value: string;
-  onChange: (v: string) => void;
+  label: string; options: { value: string; label: string }[]; value: string; onChange: (v: string) => void;
 }) {
   return (
     <div>
-      <label className="block text-xs font-medium mb-1.5" style={{ color: "rgba(255,255,255,0.5)" }}>
-        {label}
-      </label>
-      <select className="select-field" value={value} onChange={(e) => onChange(e.target.value)}>
+      <label className="block text-xs mb-1.5" style={{ color: "rgba(255,255,255,0.45)" }}>{label}</label>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full rounded-lg px-3 py-2.5 text-xs outline-none cursor-pointer"
+        style={{
+          background: "rgba(255,255,255,0.05)",
+          border: "1px solid rgba(255,255,255,0.08)",
+          color: "rgba(255,255,255,0.8)",
+          appearance: "none",
+          backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath fill='rgba(255,255,255,0.3)' d='M5 6L0 0h10z'/%3E%3C/svg%3E\")",
+          backgroundRepeat: "no-repeat",
+          backgroundPosition: "right 10px center",
+          paddingRight: "28px",
+        }}
+      >
         {options.map((o) => (
-          <option key={o.value} value={o.value}>{o.label}</option>
+          <option key={o.value} value={o.value} style={{ background: "#1a1a2e" }}>{o.label}</option>
         ))}
       </select>
     </div>
   );
 }
 
-function ResultRow({ label, value, highlight }: { label: string; value: string; highlight?: "green" | "red" | "yellow" }) {
-  const colors = {
-    green:  "text-emerald-400",
-    red:    "text-red-400",
-    yellow: "text-yellow-400",
-    default: "text-white",
-  };
+function SectionDivider({ title }: { title: string }) {
   return (
-    <div className="flex items-center justify-between py-2.5" style={{ borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
-      <span className="text-sm" style={{ color: "rgba(255,255,255,0.55)" }}>{label}</span>
-      <span className={`text-sm font-semibold ${highlight ? colors[highlight] : colors.default}`}>{value}</span>
+    <div className="flex items-center gap-3 my-5">
+      <div className="flex-1 h-px" style={{ background: "rgba(255,255,255,0.06)" }} />
+      <p className="text-xs font-semibold" style={{ color: "rgba(255,255,255,0.22)", letterSpacing: "0.12em" }}>{title}</p>
+      <div className="flex-1 h-px" style={{ background: "rgba(255,255,255,0.06)" }} />
     </div>
   );
 }
 
-function AlertCard({ type, text }: { type: "warn" | "error" | "info"; text: string }) {
-  const styles = {
-    warn:  { bg: "rgba(234,179,8,0.08)",  border: "rgba(234,179,8,0.2)",  icon: "⚠", color: "#facc15" },
-    error: { bg: "rgba(239,68,68,0.08)",  border: "rgba(239,68,68,0.2)",  icon: "✕", color: "#f87171" },
-    info:  { bg: "rgba(99,102,241,0.08)", border: "rgba(99,102,241,0.2)", icon: "ℹ", color: "#a78bfa" },
-  };
-  const s = styles[type];
+function FunnelArrow({ label, rate }: { label: string; rate: string }) {
   return (
-    <div className="fade-in flex items-start gap-3 rounded-xl px-4 py-3"
-      style={{ background: s.bg, border: `1px solid ${s.border}` }}>
-      <span className="text-base mt-0.5 flex-shrink-0" style={{ color: s.color }}>{s.icon}</span>
-      <p className="text-sm leading-relaxed" style={{ color: "rgba(255,255,255,0.75)" }}>{text}</p>
-    </div>
-  );
-}
-
-function BlockHeader({ num, title, subtitle, color }: { num: string; title: string; subtitle: string; color: string }) {
-  return (
-    <div className="flex items-start gap-4 mb-6">
-      <div className="w-9 h-9 rounded-xl flex items-center justify-center text-sm font-bold flex-shrink-0 mt-0.5"
-        style={{ background: `${color}20`, color }}>
-        {num}
+    <div className="flex items-center gap-2 my-1 pl-4">
+      <div className="flex flex-col items-center gap-0">
+        <div className="w-px h-2.5" style={{ background: "rgba(255,255,255,0.1)" }} />
+        <svg width="7" height="4" viewBox="0 0 7 4"><path d="M3.5 4L0 0h7z" fill="rgba(255,255,255,0.12)" /></svg>
       </div>
-      <div>
-        <h2 className="text-base font-semibold text-white">{title}</h2>
-        <p className="text-xs mt-0.5" style={{ color: "rgba(255,255,255,0.4)" }}>{subtitle}</p>
+      <div className="flex items-center gap-2 px-2.5 py-1 rounded-md"
+        style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)" }}>
+        <span className="text-xs" style={{ color: "rgba(255,255,255,0.3)" }}>{label}:</span>
+        <span className="text-xs font-semibold" style={{ color: "rgba(255,255,255,0.55)", fontFamily: "'Fira Code', monospace" }}>{rate}</span>
       </div>
     </div>
   );
 }
 
-// ─── Main Component ───────────────────────────────────────────────────────────
+function FunnelBar({
+  label, sublabel, mainValue, metrics, color, bgColor, widthPct = 100, alert,
+}: {
+  label: string; sublabel?: string; mainValue: string;
+  metrics: { label: string; value: string; accent?: boolean }[];
+  color: string; bgColor: string; widthPct?: number;
+  alert?: { type: "warn" | "error"; text: string };
+}) {
+  return (
+    <div style={{ width: `${widthPct}%` }}>
+      <div className="relative rounded-xl overflow-hidden"
+        style={{ background: bgColor, border: `1px solid ${color}28` }}>
+        <div className="absolute left-0 top-0 bottom-0 w-1 rounded-l-xl" style={{ background: color }} />
+        <div className="flex items-center justify-between pl-5 pr-5 py-4">
+          <div>
+            <p className="text-xs font-semibold" style={{ color: `${color}bb`, letterSpacing: "0.09em" }}>{label}</p>
+            {sublabel && <p className="text-xs mt-0.5" style={{ color: "rgba(255,255,255,0.3)" }}>{sublabel}</p>}
+            <p className="text-2xl font-bold mt-1.5 text-white" style={{ fontFamily: "'Fira Code', monospace" }}>{mainValue}</p>
+          </div>
+          <div className="flex items-center gap-5">
+            {metrics.map((m) => (
+              <div key={m.label} className="text-right">
+                <p className="text-xs" style={{ color: "rgba(255,255,255,0.32)" }}>{m.label}</p>
+                <p className="text-sm font-semibold mt-0.5" style={{ color: m.accent ? color : "rgba(255,255,255,0.7)", fontFamily: "'Fira Code', monospace" }}>{m.value}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+        {alert && (
+          <div className="mx-4 mb-3 px-3 py-1.5 rounded-lg text-xs"
+            style={{
+              background: alert.type === "error" ? "rgba(239,68,68,0.1)" : "rgba(234,179,8,0.1)",
+              color: alert.type === "error" ? "#fca5a5" : "#fde68a",
+              border: `1px solid ${alert.type === "error" ? "rgba(239,68,68,0.2)" : "rgba(234,179,8,0.2)"}`,
+            }}>
+            {alert.type === "error" ? "✕ " : "⚠ "}{alert.text}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Main ─────────────────────────────────────────────────────────────────────
 
 export default function Home() {
-  // Block 1
-  const [b1, setB1] = useState<{ meta: string; ticket: string; conversao: string; cpl: string }>({
-    meta: "", ticket: "", conversao: "", cpl: "",
-  });
+  const [meta,      setMeta]      = useState("");
+  const [ticket,    setTicket]    = useState("");
+  const [conversao, setConversao] = useState("");
+  const [cpl,       setCpl]       = useState("");
 
-  // Block 2
-  const [b2, setB2] = useState<Block2>({
-    regime: "pj",
-    modalidade: "remoto",
-    nivelCloser: "pleno",
-    nivelSDR: "junior",
-  });
+  const [regime,      setRegime]      = useState<Regime>("pj");
+  const [modalidade,  setModalidade]  = useState<Modalidade>("remoto");
+  const [nivelCloser, setNivelCloser] = useState<CloserNivel>("pleno");
+  const [nivelSDR,    setNivelSDR]    = useState<SDRNivel>("junior");
 
-  // Block 3
-  const [b3, setB3] = useState<Block3>({
-    baseCalculo: "cheio",
-    percentualEntrada: 40,
-  });
-  const [b3EntradaStr, setB3EntradaStr] = useState("40");
+  const [baseCalculo, setBaseCalculo] = useState<BaseCalculo>("cheio");
+  const [pEntradaStr, setPEntradaStr] = useState("40");
 
-  // ─── Calculations ──────────────────────────────────────────────────────────
+  const c = useMemo(() => {
+    const vMeta      = parseFloat(meta)      || 0;
+    const vTicket    = parseFloat(ticket)    || 0;
+    const vConversao = (parseFloat(conversao) || 0) / 100;
+    const vCpl       = parseFloat(cpl)       || 0;
+    const vPEntrada  = (parseFloat(pEntradaStr) || 40) / 100;
 
-  const calc = useMemo(() => {
-    const meta      = parseFloat(b1.meta)      || 0;
-    const ticket    = parseFloat(b1.ticket)    || 0;
-    const conversao = (parseFloat(b1.conversao) || 0) / 100;
-    const cpl       = parseFloat(b1.cpl)       || 0;
+    const vendas  = vTicket > 0 ? vMeta / vTicket : 0;
+    const calls   = vConversao > 0 ? vendas / vConversao : 0;
+    const leads   = calls / SDR_BOOKING_RATE;
+    const trafego = leads * vCpl;
 
-    // Block 1
-    const vendas   = ticket > 0 ? meta / ticket : 0;
-    const calls    = conversao > 0 ? vendas / conversao : 0;
-    const leads    = calls / SDR_BOOKING_RATE;
-    const trafego  = leads * cpl;
+    const closer      = CLOSER_DATA[nivelCloser];
+    const sdr         = SDR_DATA[nivelSDR];
+    const mult        = REGIME_MULT[regime] * MODAL_MULT[modalidade];
+    const capCloser   = closer.callsDay * DIAS_UTEIS;
+    const numClosers  = calls > 0 ? Math.ceil(calls / capCloser) : 0;
+    const numSDRs     = numClosers * 2;
+    const custoCloser = closer.fixo * mult;
+    const custoSDR    = sdr.fixo * mult;
+    const folha       = numClosers * custoCloser + numSDRs * custoSDR;
 
-    // Block 2
-    const closerData  = CLOSER_DATA[b2.nivelCloser];
-    const sdrData     = SDR_DATA[b2.nivelSDR];
-    const regimeMult  = REGIME_MULT[b2.regime];
-    const modalMult   = MODAL_MULT[b2.modalidade];
-    const mult        = regimeMult * modalMult;
+    const percComis  = getCommissionRate(vTicket);
+    const baseVenda  = baseCalculo === "cheio" ? vTicket : vTicket * vPEntrada;
+    const comisVenda = baseVenda * percComis;
+    const comisTotal = comisVenda * vendas;
+    const comisRate  = vTicket > 0 ? comisVenda / vTicket : 0;
 
-    const capCloser     = closerData.callsDay * DIAS_UTEIS;
-    const numClosers    = calls > 0 ? Math.ceil(calls / capCloser) : 0;
-    const numSDRs       = numClosers * 2;
-
-    const custoCloser   = closerData.fixo * mult;
-    const custoSDR      = sdrData.fixo * mult;
-    const folhaTotal    = numClosers * custoCloser + numSDRs * custoSDR;
-
-    // Block 3
-    const pEntrada      = (parseFloat(b3EntradaStr) || 40) / 100;
-    const baseVenda     = b3.baseCalculo === "cheio" ? ticket : ticket * pEntrada;
-    const percComissao  = getCommissionRate(ticket);
-    const comissaoPorVenda = baseVenda * percComissao;
-    const comissaoTotal = comissaoPorVenda * vendas;
-
-    const comissaoSobreTicket = ticket > 0 ? comissaoPorVenda / ticket : 0;
-
-    // Final
-    const custoTotal   = folhaTotal + comissaoTotal + trafego;
-    const percCusto    = meta > 0 ? custoTotal / meta : 0;
+    const custoTotal = folha + comisTotal + trafego;
+    const percCusto  = vMeta > 0 ? custoTotal / vMeta : 0;
 
     return {
-      meta, ticket, conversao, cpl,
+      vMeta, vTicket, vConversao, vCpl, vPEntrada,
       vendas, calls, leads, trafego,
-      capCloser, numClosers, numSDRs,
-      custoCloser, custoSDR, folhaTotal,
-      percComissao, comissaoPorVenda, comissaoTotal, comissaoSobreTicket,
-      baseVenda, pEntrada,
+      capCloser, numClosers, numSDRs, custoCloser, custoSDR, folha,
+      percComis, baseVenda, comisVenda, comisTotal, comisRate,
       custoTotal, percCusto,
     };
-  }, [b1, b2, b3, b3EntradaStr]);
+  }, [meta, ticket, conversao, cpl, regime, modalidade, nivelCloser, nivelSDR, baseCalculo, pEntradaStr]);
 
-  // ─── Insights ─────────────────────────────────────────────────────────────
-
-  const insights = useMemo(() => {
-    const list: { type: "warn" | "error" | "info"; text: string }[] = [];
-
-    if (calc.numClosers > 1) {
-      list.push({ type: "info", text: `Você precisará de ${calc.numClosers} closers. Considere contratar ${calc.numSDRs} SDRs para garantir agenda sempre cheia.` });
-    }
-
-    if (calc.comissaoSobreTicket > 0.05) {
-      list.push({ type: "error", text: `Comissão acima do limite saudável de 5% do ticket (atual: ${fmtN(calc.comissaoSobreTicket * 100, 1)}%). Revise o percentual ou mude a base para entrada de caixa.` });
-    }
-
-    if (calc.percCusto > 0.35 && calc.meta > 0) {
-      list.push({ type: "warn", text: `Custo comercial de ${fmtN(calc.percCusto * 100, 0)}% do faturamento supera o limite de 35%. Considere PJ remoto ou reduzir o nível de contratação.` });
-    }
-
-    if (calc.conversao > 0 && calc.conversao < 0.15) {
-      list.push({ type: "warn", text: `Taxa de conversão abaixo de 15%. O volume de leads e o investimento em tráfego sobem proporcionalmente.` });
-    }
-
-    if (calc.numClosers === 1 && calc.numSDRs === 2) {
-      list.push({ type: "info", text: `Com 1 closer e 2 SDRs, a agenda tende a ficar cheia. Monitore a ocupação e a taxa de no-show.` });
-    }
-
-    return list;
-  }, [calc]);
-
-  const hasData = calc.meta > 0 && calc.ticket > 0;
-
-  // ─── Render ────────────────────────────────────────────────────────────────
+  const hasData   = c.vMeta > 0 && c.vTicket > 0;
+  const isHealthy = c.percCusto > 0 && c.percCusto <= 0.35;
 
   return (
-    <div className="min-h-screen" style={{ background: "linear-gradient(135deg, #080810 0%, #0d0d1a 100%)" }}>
-      {/* Header */}
-      <header className="border-b" style={{ borderColor: "rgba(255,255,255,0.06)", background: "rgba(255,255,255,0.02)" }}>
-        <div className="max-w-6xl mx-auto px-6 py-5 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg flex items-center justify-center text-base"
+    <div className="flex" style={{ minHeight: "100dvh", background: "#0b0d14", fontFamily: "var(--font-geist), -apple-system, sans-serif" }}>
+
+      {/* ── SIDEBAR ─────────────────────────────────────────────────────────── */}
+      <aside
+        className="w-72 xl:w-80 flex-shrink-0 flex flex-col"
+        style={{ background: "#0f1117", borderRight: "1px solid rgba(255,255,255,0.06)", minHeight: "100dvh", position: "sticky", top: 0, overflowY: "auto", maxHeight: "100dvh" }}
+      >
+        {/* Header */}
+        <div className="px-5 py-4 border-b flex-shrink-0" style={{ borderColor: "rgba(255,255,255,0.06)" }}>
+          <div className="flex items-center gap-2.5">
+            <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
               style={{ background: "linear-gradient(135deg, #6366f1, #a78bfa)" }}>
-              ◈
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
+              </svg>
             </div>
             <div>
-              <h1 className="text-sm font-semibold text-white">Dimensionamento Comercial</h1>
-              <p className="text-xs" style={{ color: "rgba(255,255,255,0.35)" }}>Calculadora estratégica do time de vendas</p>
+              <p className="text-sm font-semibold text-white leading-none">Dimensionamento</p>
+              <p className="text-xs mt-0.5" style={{ color: "rgba(255,255,255,0.3)" }}>Calculadora Comercial</p>
             </div>
-          </div>
-          <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs"
-            style={{ background: "rgba(99,102,241,0.1)", border: "1px solid rgba(99,102,241,0.2)", color: "#a78bfa" }}>
-            <span className="pulse-dot w-1.5 h-1.5 rounded-full bg-violet-400 inline-block"></span>
-            Cálculo em tempo real
           </div>
         </div>
-      </header>
 
-      <main className="max-w-6xl mx-auto px-4 sm:px-6 py-8">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* METAS */}
+        <SidebarSection title="METAS">
+          <NumberInput label="Meta de Faturamento  R$" value={meta}      onChange={setMeta}      step={5000} />
+          <NumberInput label="Ticket Médio  R$"        value={ticket}    onChange={setTicket}    step={1000} />
+        </SidebarSection>
 
-          {/* ── LEFT COLUMN — Inputs ── */}
-          <div className="lg:col-span-2 space-y-5">
+        {/* CONVERSÃO */}
+        <SidebarSection title="TAXAS DE CONVERSÃO">
+          <NumberInput label="Taxa do Closer  %" value={conversao} onChange={setConversao} step={5} />
+          <NumberInput label="Custo por Lead  R$" value={cpl}      onChange={setCpl}       step={10} />
+        </SidebarSection>
 
-            {/* Block 1 */}
-            <div className="rounded-2xl p-6" style={{ background: "rgba(255,255,255,0.025)", border: "1px solid rgba(255,255,255,0.07)" }}>
-              <BlockHeader
-                num="01"
-                title="Metas e Produto"
-                subtitle="Define o volume de trabalho necessário"
-                color="#6366f1"
-              />
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <InputField label="Meta de faturamento mensal" prefix="R$"
-                  value={b1.meta} onChange={(v) => setB1((p) => ({ ...p, meta: v }))}
-                  placeholder="100.000" hint="Receita bruta alvo no mês" />
-                <InputField label="Ticket médio das vendas" prefix="R$"
-                  value={b1.ticket} onChange={(v) => setB1((p) => ({ ...p, ticket: v }))}
-                  placeholder="15.000" />
-                <InputField label="Taxa de conversão do closer" suffix="%"
-                  value={b1.conversao} onChange={(v) => setB1((p) => ({ ...p, conversao: v }))}
-                  placeholder="25" hint="% de calls que viram venda" />
-                <InputField label="Custo por lead (CPL)" prefix="R$"
-                  value={b1.cpl} onChange={(v) => setB1((p) => ({ ...p, cpl: v }))}
-                  placeholder="80" />
-              </div>
+        {/* TIME */}
+        <SidebarSection title="TIME COMERCIAL">
+          <ToggleInput label="Regime"
+            options={[{ value: "pj", label: "PJ" }, { value: "clt", label: "CLT  +50%" }]}
+            value={regime} onChange={(v) => setRegime(v as Regime)} />
+          <ToggleInput label="Modalidade"
+            options={[{ value: "remoto", label: "Remoto" }, { value: "presencial", label: "Presencial  +25%" }]}
+            value={modalidade} onChange={(v) => setModalidade(v as Modalidade)} />
+          <SelectInput label="Nível do Closer"
+            options={[
+              { value: "junior",  label: "Júnior — R$ 2.500 · 4 calls/dia" },
+              { value: "pleno",   label: "Pleno — R$ 3.000 · 5 calls/dia" },
+              { value: "senior",  label: "Sênior — R$ 3.750 · 6 calls/dia" },
+              { value: "lider",   label: "Líder — R$ 5.750 · 4 calls/dia" },
+            ]}
+            value={nivelCloser} onChange={(v) => setNivelCloser(v as CloserNivel)} />
+          <SelectInput label="Nível do SDR"
+            options={[
+              { value: "junior",          label: "Júnior — R$ 1.900" },
+              { value: "pleno",           label: "Pleno — R$ 2.500" },
+              { value: "senior",          label: "Sênior — R$ 3.000" },
+              { value: "senior_avancado", label: "Sr. Avançado — R$ 3.200" },
+            ]}
+            value={nivelSDR} onChange={(v) => setNivelSDR(v as SDRNivel)} />
+        </SidebarSection>
 
-              {/* Block 1 results */}
-              {hasData && (
-                <div className="mt-5 rounded-xl p-4 fade-in" style={{ background: "rgba(99,102,241,0.06)", border: "1px solid rgba(99,102,241,0.12)" }}>
-                  <p className="text-xs font-semibold mb-3 uppercase tracking-wider" style={{ color: "rgba(99,102,241,0.8)" }}>Resultados do bloco 1</p>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                    {[
-                      { label: "Vendas/mês", value: fmtN(calc.vendas) },
-                      { label: "Calls/mês", value: fmtN(calc.calls) },
-                      { label: "Leads/mês", value: fmtN(calc.leads) },
-                      { label: "Invest. tráfego", value: fmt(calc.trafego) },
-                    ].map((item) => (
-                      <div key={item.label} className="rounded-lg px-3 py-2.5 text-center" style={{ background: "rgba(255,255,255,0.04)" }}>
-                        <p className="text-lg font-bold text-white">{item.value}</p>
-                        <p className="text-xs mt-0.5" style={{ color: "rgba(255,255,255,0.4)" }}>{item.label}</p>
-                      </div>
-                    ))}
-                  </div>
+        {/* COMISSÃO */}
+        <SidebarSection title="COMISSÃO">
+          <ToggleInput label="Base de Cálculo"
+            options={[{ value: "cheio", label: "Valor Cheio" }, { value: "entrada", label: "Entrada" }]}
+            value={baseCalculo} onChange={(v) => setBaseCalculo(v as BaseCalculo)} />
+          {baseCalculo === "entrada" && (
+            <NumberInput label="% de Entrada" value={pEntradaStr} onChange={setPEntradaStr} step={5} min={1} />
+          )}
+          {hasData && (
+            <div className="rounded-lg p-3 space-y-2" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
+              {[
+                { label: "Taxa aplicada", value: pct(c.percComis), color: "#fbbf24" },
+                { label: "Por venda", value: fmt(c.comisVenda), color: "rgba(255,255,255,0.75)" },
+                { label: "% do ticket", value: pct(c.comisRate), color: c.comisRate > 0.05 ? "#f87171" : "#34d399" },
+              ].map((r) => (
+                <div key={r.label} className="flex justify-between items-center">
+                  <span className="text-xs" style={{ color: "rgba(255,255,255,0.38)" }}>{r.label}</span>
+                  <span className="text-xs font-semibold" style={{ color: r.color, fontFamily: "'Fira Code', monospace" }}>{r.value}</span>
                 </div>
-              )}
+              ))}
             </div>
+          )}
+        </SidebarSection>
 
-            {/* Block 2 */}
-            <div className="rounded-2xl p-6" style={{ background: "rgba(255,255,255,0.025)", border: "1px solid rgba(255,255,255,0.07)" }}>
-              <BlockHeader
-                num="02"
-                title="Dimensionamento do Time"
-                subtitle="Define estrutura, níveis e custo da folha"
-                color="#10b981"
+        {/* BENCHMARKS */}
+        <div className="px-5 pt-5 pb-6 flex-shrink-0">
+          <p className="text-xs font-semibold mb-3" style={{ color: "rgba(255,255,255,0.28)", letterSpacing: "0.12em" }}>BENCHMARKS</p>
+          <div className="space-y-2.5">
+            {[
+              { label: "Custo comercial/fat.", vals: ["≤25%","25–35%",">35%"] },
+              { label: "Conversão closer",     vals: [">30%","15–30%","<15%"] },
+              { label: "Comissão/ticket",      vals: ["≤3%","3–5%",">5%"] },
+            ].map((b) => (
+              <div key={b.label}>
+                <p className="text-xs mb-1" style={{ color: "rgba(255,255,255,0.38)" }}>{b.label}</p>
+                <div className="flex gap-1">
+                  {b.vals.map((v, i) => (
+                    <span key={v} className="flex-1 text-center text-xs rounded py-0.5"
+                      style={{ background: i === 0 ? "rgba(16,185,129,0.12)" : i === 1 ? "rgba(234,179,8,0.1)" : "rgba(239,68,68,0.1)", color: i === 0 ? "#34d399" : i === 1 ? "#fbbf24" : "#f87171" }}>{v}</span>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </aside>
+
+      {/* ── MAIN ────────────────────────────────────────────────────────────── */}
+      <main className="flex-1 overflow-y-auto flex flex-col">
+
+        {/* Top bar */}
+        <div className="sticky top-0 z-10 px-6 py-3.5 flex items-center justify-between border-b flex-shrink-0"
+          style={{ background: "rgba(11,13,20,0.92)", backdropFilter: "blur(12px)", borderColor: "rgba(255,255,255,0.06)" }}>
+          <div>
+            <h1 className="text-sm font-semibold text-white">Fluxo Comercial</h1>
+            <p className="text-xs mt-0.5" style={{ color: "rgba(255,255,255,0.32)" }}>
+              {hasData ? `Meta ${fmt(c.vMeta)} · Ticket ${fmt(c.vTicket)} · Conversão ${pct(c.vConversao)}` : "Preencha os inputs no painel esquerdo para ver o fluxo"}
+            </p>
+          </div>
+          {hasData && (
+            <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs"
+              style={{
+                background: isHealthy ? "rgba(16,185,129,0.08)" : "rgba(239,68,68,0.08)",
+                border: `1px solid ${isHealthy ? "rgba(16,185,129,0.18)" : "rgba(239,68,68,0.18)"}`,
+                color: isHealthy ? "#34d399" : "#f87171",
+              }}>
+              <span className="w-1.5 h-1.5 rounded-full inline-block pulse-dot" style={{ background: isHealthy ? "#34d399" : "#f87171" }} />
+              Custo comercial: {pct(c.percCusto)} — {isHealthy ? "Saudável" : "Atenção"}
+            </div>
+          )}
+        </div>
+
+        {/* Content */}
+        <div className="flex-1 p-6 max-w-3xl w-full">
+          {!hasData ? (
+            <div className="flex flex-col items-center justify-center py-24 text-center">
+              <div className="w-14 h-14 rounded-2xl flex items-center justify-center mb-4"
+                style={{ background: "rgba(99,102,241,0.08)", border: "1px solid rgba(99,102,241,0.12)" }}>
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="rgba(99,102,241,0.5)" strokeWidth="1.5" strokeLinecap="round">
+                  <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
+                </svg>
+              </div>
+              <p className="text-base font-medium text-white mb-2">Nenhum dado ainda</p>
+              <p className="text-sm" style={{ color: "rgba(255,255,255,0.35)" }}>
+                Preencha a meta de faturamento e o ticket médio<br />no painel esquerdo para ver o fluxo.
+              </p>
+            </div>
+          ) : (
+            <>
+              {/* ── GERAÇÃO DE DEMANDA ── */}
+              <SectionDivider title="GERAÇÃO DE DEMANDA" />
+
+              <FunnelBar
+                label="META DE FATURAMENTO"
+                sublabel="Receita bruta alvo no mês"
+                mainValue={fmt(c.vMeta)}
+                color="#6366f1" bgColor="rgba(99,102,241,0.07)"
+                widthPct={100}
+                metrics={[
+                  { label: "Ticket Médio",  value: fmt(c.vTicket) },
+                  { label: "Período",       value: "Mensal" },
+                ]}
               />
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <Toggle label="Regime de contratação"
-                  options={[{ value: "pj", label: "PJ" }, { value: "clt", label: "CLT (+50%)" }]}
-                  value={b2.regime} onChange={(v) => setB2((p) => ({ ...p, regime: v as "pj" | "clt" }))} />
-                <Toggle label="Modalidade de trabalho"
-                  options={[{ value: "remoto", label: "Remoto" }, { value: "presencial", label: "Presencial (+25%)" }]}
-                  value={b2.modalidade} onChange={(v) => setB2((p) => ({ ...p, modalidade: v as "remoto" | "presencial" }))} />
-                <SelectField label="Nível do Closer"
-                  options={[
-                    { value: "junior",  label: "Júnior — R$ 2.500 | 4 calls/dia" },
-                    { value: "pleno",   label: "Pleno — R$ 3.000 | 5 calls/dia" },
-                    { value: "senior",  label: "Sênior — R$ 3.750 | 6 calls/dia" },
-                    { value: "lider",   label: "Líder/Gerente — R$ 5.750 | 4 calls/dia" },
+
+              <FunnelArrow label="÷ Ticket" rate={fmt(c.vTicket)} />
+
+              <FunnelBar
+                label="VENDAS NECESSÁRIAS"
+                sublabel="Contratos fechados no mês"
+                mainValue={`${fmtN(c.vendas)} vendas`}
+                color="#3b82f6" bgColor="rgba(59,130,246,0.07)"
+                widthPct={96}
+                metrics={[
+                  { label: "CPA Est.",  value: c.vendas > 0 ? fmt(c.custoTotal / c.vendas) : "—" },
+                  { label: "Meta",      value: fmt(c.vMeta) },
+                ]}
+              />
+
+              <FunnelArrow label="÷ Taxa conversão" rate={c.vConversao > 0 ? pct(c.vConversao) : "—%"} />
+
+              <FunnelBar
+                label="CALLS NECESSÁRIAS"
+                sublabel="Reuniões de vendas agendadas"
+                mainValue={`${fmtN(c.calls)} calls`}
+                color="#0ea5e9" bgColor="rgba(14,165,233,0.07)"
+                widthPct={90}
+                metrics={[
+                  { label: "Cap./Closer", value: `${c.capCloser} /mês` },
+                  { label: "Dias úteis",  value: "22" },
+                ]}
+              />
+
+              <FunnelArrow label="÷ Agendamento SDR" rate="25%" />
+
+              <FunnelBar
+                label="LEADS NECESSÁRIOS"
+                sublabel="Leads qualificados no ICP"
+                mainValue={`${fmtN(c.leads)} leads`}
+                color="#06b6d4" bgColor="rgba(6,182,212,0.07)"
+                widthPct={82}
+                metrics={[
+                  { label: "CPL",       value: fmt(c.vCpl) },
+                  { label: "Investim.", value: fmt(c.trafego) },
+                ]}
+              />
+
+              <FunnelArrow label="× CPL" rate={fmt(c.vCpl)} />
+
+              <FunnelBar
+                label="INVESTIMENTO EM TRÁFEGO"
+                sublabel="Custo de mídia estimado"
+                mainValue={fmt(c.trafego)}
+                color="#10b981" bgColor="rgba(16,185,129,0.07)"
+                widthPct={74}
+                metrics={[
+                  { label: "Por lead",  value: fmt(c.vCpl) },
+                  { label: "Por venda", value: c.vendas > 0 ? fmt(c.trafego / c.vendas) : "—" },
+                ]}
+              />
+
+              {/* ── TIME ── */}
+              <SectionDivider title="DIMENSIONAMENTO DO TIME" />
+
+              <div className="grid grid-cols-2 gap-3">
+                <FunnelBar
+                  label="CLOSERS"
+                  sublabel={CLOSER_DATA[nivelCloser].label}
+                  mainValue={`${c.numClosers} closer${c.numClosers !== 1 ? "s" : ""}`}
+                  color="#f59e0b" bgColor="rgba(245,158,11,0.07)"
+                  metrics={[
+                    { label: "Fixo/un.", value: fmt(c.custoCloser) },
+                    { label: "Cap./mês", value: `${c.capCloser}` },
                   ]}
-                  value={b2.nivelCloser} onChange={(v) => setB2((p) => ({ ...p, nivelCloser: v as Block2["nivelCloser"] }))} />
-                <SelectField label="Nível do SDR"
-                  options={[
-                    { value: "junior",          label: "Júnior — R$ 1.900 | 40 agend./mês" },
-                    { value: "pleno",           label: "Pleno — R$ 2.500 | 60 agend./mês" },
-                    { value: "senior",          label: "Sênior — R$ 3.000 | 80 agend./mês" },
-                    { value: "senior_avancado", label: "Sênior Avançado — R$ 3.200 | 100+ agend./mês" },
+                />
+                <FunnelBar
+                  label="SDRs"
+                  sublabel={SDR_DATA[nivelSDR].label}
+                  mainValue={`${c.numSDRs} SDR${c.numSDRs !== 1 ? "s" : ""}`}
+                  color="#f97316" bgColor="rgba(249,115,22,0.07)"
+                  metrics={[
+                    { label: "Fixo/un.", value: fmt(c.custoSDR) },
+                    { label: "Ratio",    value: "2:1" },
                   ]}
-                  value={b2.nivelSDR} onChange={(v) => setB2((p) => ({ ...p, nivelSDR: v as Block2["nivelSDR"] }))} />
+                />
               </div>
 
-              {hasData && (
-                <div className="mt-5 rounded-xl p-4 fade-in" style={{ background: "rgba(16,185,129,0.06)", border: "1px solid rgba(16,185,129,0.12)" }}>
-                  <p className="text-xs font-semibold mb-3 uppercase tracking-wider" style={{ color: "rgba(16,185,129,0.8)" }}>Estrutura calculada</p>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                    {[
-                      { label: "Closers", value: String(calc.numClosers) },
-                      { label: "SDRs", value: String(calc.numSDRs) },
-                      { label: "Cap./closer", value: `${calc.capCloser} calls` },
-                      { label: "Folha total", value: fmt(calc.folhaTotal) },
-                    ].map((item) => (
-                      <div key={item.label} className="rounded-lg px-3 py-2.5 text-center" style={{ background: "rgba(255,255,255,0.04)" }}>
-                        <p className="text-lg font-bold text-white">{item.value}</p>
-                        <p className="text-xs mt-0.5" style={{ color: "rgba(255,255,255,0.4)" }}>{item.label}</p>
-                      </div>
-                    ))}
+              {/* ── CUSTOS ── */}
+              <SectionDivider title="CUSTOS E COMISSÃO" />
+
+              <FunnelBar
+                label="FOLHA SALARIAL"
+                sublabel={`${regime.toUpperCase()} · ${modalidade === "presencial" ? "Presencial" : "Remoto"}`}
+                mainValue={fmt(c.folha)}
+                color="#8b5cf6" bgColor="rgba(139,92,246,0.07)"
+                metrics={[
+                  { label: `${c.numClosers}× Closer`, value: fmt(c.numClosers * c.custoCloser) },
+                  { label: `${c.numSDRs}× SDR`,       value: fmt(c.numSDRs * c.custoSDR) },
+                ]}
+              />
+
+              <div className="my-2" />
+
+              <FunnelBar
+                label="COMISSÃO ESTIMADA"
+                sublabel={baseCalculo === "cheio" ? "Sobre valor cheio" : `Sobre ${fmtN(c.vPEntrada * 100, 0)}% de entrada`}
+                mainValue={fmt(c.comisTotal)}
+                color="#ec4899" bgColor="rgba(236,72,153,0.07)"
+                metrics={[
+                  { label: "Taxa",      value: pct(c.percComis), accent: true },
+                  { label: "Por venda", value: fmt(c.comisVenda) },
+                ]}
+                alert={c.comisRate > 0.05
+                  ? { type: "error", text: `${pct(c.comisRate)} do ticket — acima do limite saudável de 5%` }
+                  : undefined}
+              />
+
+              {/* ── RESULTADO FINAL ── */}
+              <SectionDivider title="RESULTADO FINAL" />
+
+              <div className="rounded-2xl overflow-hidden"
+                style={{
+                  background: c.percCusto > 0.35 ? "rgba(239,68,68,0.06)" : "rgba(16,185,129,0.06)",
+                  border: `1px solid ${c.percCusto > 0.35 ? "rgba(239,68,68,0.18)" : "rgba(16,185,129,0.18)"}`,
+                }}>
+                {/* Main numbers */}
+                <div className="px-6 pt-5 pb-4 flex items-start justify-between">
+                  <div>
+                    <p className="text-xs font-semibold" style={{ color: "rgba(255,255,255,0.35)", letterSpacing: "0.1em" }}>CUSTO COMERCIAL TOTAL</p>
+                    <p className="text-4xl font-bold mt-2 text-white" style={{ fontFamily: "'Fira Code', monospace" }}>{fmt(c.custoTotal)}</p>
+                    <p className="text-xs mt-2" style={{ color: "rgba(255,255,255,0.38)" }}>
+                      Folha {fmt(c.folha)} + Comissão {fmt(c.comisTotal)} + Tráfego {fmt(c.trafego)}
+                    </p>
                   </div>
-                  {/* Breakdown */}
-                  <div className="mt-3 pt-3" style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-1">
-                      <p className="text-xs" style={{ color: "rgba(255,255,255,0.4)" }}>
-                        Closer {CLOSER_DATA[b2.nivelCloser].label}: {fmt(calc.custoCloser)}/mês
-                      </p>
-                      <p className="text-xs" style={{ color: "rgba(255,255,255,0.4)" }}>
-                        SDR {SDR_DATA[b2.nivelSDR].label}: {fmt(calc.custoSDR)}/mês
-                      </p>
-                    </div>
-                    <p className="text-xs mt-1" style={{ color: "rgba(255,255,255,0.3)" }}>
-                      Multiplicadores aplicados: {b2.regime.toUpperCase()} {b2.modalidade === "presencial" ? "× Presencial" : ""}
+                  <div className="text-right">
+                    <p className="text-xs" style={{ color: "rgba(255,255,255,0.38)" }}>% do faturamento</p>
+                    <p className="text-4xl font-bold mt-1" style={{
+                      fontFamily: "'Fira Code', monospace",
+                      color: c.percCusto > 0.35 ? "#f87171" : c.percCusto > 0.28 ? "#fbbf24" : "#34d399",
+                    }}>{pct(c.percCusto)}</p>
+                    <p className="text-xs mt-2 font-medium" style={{ color: c.percCusto > 0.35 ? "#f87171" : "#34d399" }}>
+                      {c.percCusto > 0.35 ? "Acima do limite de 35%" : "Dentro do limite saudável"}
                     </p>
                   </div>
                 </div>
-              )}
-            </div>
 
-            {/* Block 3 */}
-            <div className="rounded-2xl p-6" style={{ background: "rgba(255,255,255,0.025)", border: "1px solid rgba(255,255,255,0.07)" }}>
-              <BlockHeader
-                num="03"
-                title="Plano de Comissão"
-                subtitle="Define quanto vai custar cada venda para o time"
-                color="#f59e0b"
-              />
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <Toggle label="Base de cálculo da comissão"
-                  options={[{ value: "cheio", label: "Valor cheio" }, { value: "entrada", label: "Entrada de caixa" }]}
-                  value={b3.baseCalculo} onChange={(v) => setB3((p) => ({ ...p, baseCalculo: v as "cheio" | "entrada" }))} />
-                {b3.baseCalculo === "entrada" && (
-                  <InputField label="Percentual de entrada esperado" suffix="%"
-                    value={b3EntradaStr} onChange={setB3EntradaStr}
-                    placeholder="40" hint="Ex: 40% de entrada na contratação" />
+                {/* Breakdown bar */}
+                {c.custoTotal > 0 && (
+                  <div className="mx-5 mb-4 rounded-lg overflow-hidden flex h-2">
+                    <div style={{ width: `${(c.folha / c.custoTotal) * 100}%`, background: "#8b5cf6" }} />
+                    <div style={{ width: `${(c.comisTotal / c.custoTotal) * 100}%`, background: "#ec4899" }} />
+                    <div style={{ width: `${(c.trafego / c.custoTotal) * 100}%`, background: "#10b981" }} />
+                  </div>
                 )}
-              </div>
 
-              {hasData && calc.ticket > 0 && (
-                <div className="mt-5 rounded-xl p-4 fade-in" style={{ background: "rgba(245,158,11,0.06)", border: "1px solid rgba(245,158,11,0.12)" }}>
-                  <p className="text-xs font-semibold mb-3 uppercase tracking-wider" style={{ color: "rgba(245,158,11,0.8)" }}>Comissão calculada</p>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                    {[
-                      { label: "% aplicado", value: `${fmtN(calc.percComissao * 100, 1)}%` },
-                      { label: "Por venda", value: fmt(calc.comissaoPorVenda) },
-                      { label: "Total/mês", value: fmt(calc.comissaoTotal) },
-                    ].map((item) => (
-                      <div key={item.label} className="rounded-lg px-3 py-2.5 text-center" style={{ background: "rgba(255,255,255,0.04)" }}>
-                        <p className="text-lg font-bold text-white">{item.value}</p>
-                        <p className="text-xs mt-0.5" style={{ color: "rgba(255,255,255,0.4)" }}>{item.label}</p>
+                {/* Cost breakdown cards */}
+                <div className="grid grid-cols-3 gap-2.5 mx-5 mb-5">
+                  {[
+                    { label: "Folha salarial", value: fmt(c.folha),       share: c.custoTotal > 0 ? pct(c.folha / c.custoTotal) : "—",       color: "#8b5cf6" },
+                    { label: "Comissão",        value: fmt(c.comisTotal),  share: c.custoTotal > 0 ? pct(c.comisTotal / c.custoTotal) : "—",  color: "#ec4899" },
+                    { label: "Tráfego",         value: fmt(c.trafego),     share: c.custoTotal > 0 ? pct(c.trafego / c.custoTotal) : "—",     color: "#10b981" },
+                  ].map((item) => (
+                    <div key={item.label} className="rounded-xl p-3" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)" }}>
+                      <div className="flex items-center gap-1.5 mb-1.5">
+                        <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: item.color }} />
+                        <span className="text-xs" style={{ color: "rgba(255,255,255,0.4)" }}>{item.label}</span>
                       </div>
-                    ))}
-                  </div>
-                  {b3.baseCalculo === "entrada" && (
-                    <p className="text-xs mt-3" style={{ color: "rgba(255,255,255,0.35)" }}>
-                      Base: {fmt(calc.baseVenda)} por venda ({fmtN(calc.pEntrada * 100, 0)}% de {fmt(calc.ticket)})
-                    </p>
+                      <p className="text-sm font-bold text-white" style={{ fontFamily: "'Fira Code', monospace" }}>{item.value}</p>
+                      <p className="text-xs mt-0.5 font-medium" style={{ color: item.color }}>{item.share}</p>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Alerts */}
+                <div className="mx-5 mb-5 space-y-2">
+                  {c.percCusto > 0.35 && (
+                    <div className="px-4 py-2.5 rounded-xl text-xs" style={{ background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.15)", color: "#fca5a5" }}>
+                      ⚠ Estrutura onerosa — avalie reduzir o nível de contratação ou mudar para PJ remoto
+                    </div>
                   )}
-                  <div className="mt-2 p-2.5 rounded-lg text-xs" style={{ background: "rgba(255,255,255,0.04)", color: "rgba(255,255,255,0.45)" }}>
-                    <span className="font-medium" style={{ color: "rgba(255,255,255,0.6)" }}>Referência por faixa: </span>
-                    Até R$5k → 5% | R$5k–R$15k → 3,5% | R$15k–R$30k → 2,5% | Acima R$30k → 2%
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Insights */}
-            {insights.length > 0 && (
-              <div className="space-y-3">
-                <p className="text-xs font-semibold uppercase tracking-wider px-1" style={{ color: "rgba(255,255,255,0.35)" }}>
-                  Insights automáticos
-                </p>
-                {insights.map((ins, i) => (
-                  <AlertCard key={i} type={ins.type} text={ins.text} />
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* ── RIGHT COLUMN — Summary ── */}
-          <div className="space-y-5">
-            {/* Summary card */}
-            <div className="rounded-2xl p-5 sticky top-6" style={{ background: "rgba(255,255,255,0.025)", border: "1px solid rgba(255,255,255,0.07)" }}>
-              <p className="text-xs font-semibold uppercase tracking-wider mb-4" style={{ color: "rgba(255,255,255,0.4)" }}>
-                Resumo Executivo
-              </p>
-
-              {!hasData ? (
-                <div className="text-center py-8">
-                  <div className="text-4xl mb-3 opacity-20">◈</div>
-                  <p className="text-sm" style={{ color: "rgba(255,255,255,0.3)" }}>
-                    Preencha a meta e o ticket médio para ver o resumo
-                  </p>
-                </div>
-              ) : (
-                <div className="fade-in">
-                  {/* Main metric */}
-                  <div className="rounded-xl p-4 mb-4 text-center"
-                    style={{ background: calc.percCusto > 0.35 ? "rgba(239,68,68,0.1)" : "rgba(16,185,129,0.1)", border: `1px solid ${calc.percCusto > 0.35 ? "rgba(239,68,68,0.2)" : "rgba(16,185,129,0.2)"}` }}>
-                    <p className="text-xs mb-1" style={{ color: "rgba(255,255,255,0.45)" }}>Custo comercial total</p>
-                    <p className="text-3xl font-bold text-white">{fmt(calc.custoTotal)}</p>
-                    <div className="flex items-center justify-center gap-1.5 mt-2">
-                      <span className="text-lg font-bold" style={{ color: calc.percCusto > 0.35 ? "#f87171" : "#34d399" }}>
-                        {fmtN(calc.percCusto * 100, 1)}%
-                      </span>
-                      <span className="text-xs" style={{ color: "rgba(255,255,255,0.35)" }}>do faturamento</span>
+                  {c.vConversao > 0 && c.vConversao < 0.15 && (
+                    <div className="px-4 py-2.5 rounded-xl text-xs" style={{ background: "rgba(234,179,8,0.08)", border: "1px solid rgba(234,179,8,0.15)", color: "#fde68a" }}>
+                      ⚠ Conversão abaixo de 15% — volume de leads e custo de tráfego sobem proporcionalmente
                     </div>
-                    {calc.percCusto > 0.35 && (
-                      <p className="text-xs mt-1.5" style={{ color: "#f87171" }}>Acima do limite de 35%</p>
-                    )}
-                    {calc.percCusto > 0 && calc.percCusto <= 0.35 && (
-                      <p className="text-xs mt-1.5" style={{ color: "#34d399" }}>Dentro do limite saudável</p>
-                    )}
-                  </div>
-
-                  {/* Detail rows */}
-                  <div className="space-y-0">
-                    <ResultRow label="Meta de faturamento" value={fmt(calc.meta)} />
-                    <ResultRow label="Vendas necessárias/mês" value={fmtN(calc.vendas)} />
-                    <ResultRow label="Calls necessárias/mês" value={fmtN(calc.calls)} />
-                    <ResultRow label="Leads necessários/mês" value={fmtN(calc.leads)} />
-                  </div>
-
-                  <div className="mt-3 mb-1">
-                    <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: "rgba(255,255,255,0.25)" }}>Time</p>
-                  </div>
-                  <div className="space-y-0">
-                    <ResultRow label={`Closers (${CLOSER_DATA[b2.nivelCloser].label})`} value={String(calc.numClosers)} />
-                    <ResultRow label={`SDRs (${SDR_DATA[b2.nivelSDR].label})`} value={String(calc.numSDRs)} />
-                  </div>
-
-                  <div className="mt-3 mb-1">
-                    <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: "rgba(255,255,255,0.25)" }}>Custos</p>
-                  </div>
-                  <div className="space-y-0">
-                    <ResultRow label="Folha salarial total" value={fmt(calc.folhaTotal)} />
-                    <ResultRow label="Comissão estimada/mês" value={fmt(calc.comissaoTotal)} />
-                    <ResultRow label="Invest. em tráfego" value={fmt(calc.trafego)} />
-                    <ResultRow
-                      label="Custo comercial total"
-                      value={fmt(calc.custoTotal)}
-                      highlight={calc.percCusto > 0.35 ? "red" : "green"}
-                    />
-                    <ResultRow
-                      label="% do faturamento"
-                      value={`${fmtN(calc.percCusto * 100, 1)}%`}
-                      highlight={calc.percCusto > 0.35 ? "red" : calc.percCusto > 0.28 ? "yellow" : "green"}
-                    />
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Benchmarks */}
-            <div className="rounded-2xl p-5" style={{ background: "rgba(255,255,255,0.025)", border: "1px solid rgba(255,255,255,0.07)" }}>
-              <p className="text-xs font-semibold uppercase tracking-wider mb-4" style={{ color: "rgba(255,255,255,0.4)" }}>
-                Benchmarks de referência
-              </p>
-              <div className="space-y-3">
-                {[
-                  { label: "Custo comercial / fat.", bom: "≤ 25%", ok: "25–35%", ruim: "> 35%" },
-                  { label: "Conversão do closer", bom: "> 30%", ok: "15–30%", ruim: "< 15%" },
-                  { label: "Comissão / ticket", bom: "≤ 3%", ok: "3–5%", ruim: "> 5%" },
-                  { label: "Tax. agendamento SDR", bom: "25–30%", ok: "15–25%", ruim: "< 15%" },
-                ].map((b) => (
-                  <div key={b.label}>
-                    <p className="text-xs font-medium mb-1.5" style={{ color: "rgba(255,255,255,0.55)" }}>{b.label}</p>
-                    <div className="flex gap-1.5">
-                      <span className="flex-1 text-center text-xs rounded-md py-1" style={{ background: "rgba(16,185,129,0.12)", color: "#34d399" }}>{b.bom}</span>
-                      <span className="flex-1 text-center text-xs rounded-md py-1" style={{ background: "rgba(234,179,8,0.1)", color: "#fbbf24" }}>{b.ok}</span>
-                      <span className="flex-1 text-center text-xs rounded-md py-1" style={{ background: "rgba(239,68,68,0.1)", color: "#f87171" }}>{b.ruim}</span>
+                  )}
+                  {c.numClosers > 1 && (
+                    <div className="px-4 py-2.5 rounded-xl text-xs" style={{ background: "rgba(99,102,241,0.08)", border: "1px solid rgba(99,102,241,0.15)", color: "#c4b5fd" }}>
+                      ℹ {c.numClosers} closers necessários — garanta {c.numSDRs} SDRs para manter a agenda cheia
                     </div>
-                  </div>
-                ))}
-              </div>
-              <div className="flex gap-3 mt-4 pt-3" style={{ borderTop: "1px solid rgba(255,255,255,0.05)" }}>
-                <div className="flex items-center gap-1.5 text-xs" style={{ color: "rgba(255,255,255,0.35)" }}>
-                  <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: "#34d399" }}></span>Bom
-                </div>
-                <div className="flex items-center gap-1.5 text-xs" style={{ color: "rgba(255,255,255,0.35)" }}>
-                  <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: "#fbbf24" }}></span>Atenção
-                </div>
-                <div className="flex items-center gap-1.5 text-xs" style={{ color: "rgba(255,255,255,0.35)" }}>
-                  <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: "#f87171" }}></span>Ruim
+                  )}
                 </div>
               </div>
-            </div>
 
-            {/* Carreira table */}
-            <div className="rounded-2xl p-5" style={{ background: "rgba(255,255,255,0.025)", border: "1px solid rgba(255,255,255,0.07)" }}>
-              <p className="text-xs font-semibold uppercase tracking-wider mb-4" style={{ color: "rgba(255,255,255,0.4)" }}>
-                Plano de Carreira — Closer
-              </p>
-              <div className="space-y-2">
-                {Object.entries(CLOSER_DATA).map(([key, d]) => (
-                  <div key={key} className="flex items-center justify-between rounded-lg px-3 py-2"
-                    style={{ background: b2.nivelCloser === key ? "rgba(99,102,241,0.1)" : "rgba(255,255,255,0.03)", border: `1px solid ${b2.nivelCloser === key ? "rgba(99,102,241,0.2)" : "transparent"}` }}>
-                    <div>
-                      <p className="text-xs font-medium text-white">{d.label}</p>
-                      <p className="text-xs" style={{ color: "rgba(255,255,255,0.35)" }}>{d.callsDay} calls/dia</p>
-                    </div>
-                    <p className="text-xs font-semibold" style={{ color: b2.nivelCloser === key ? "#a78bfa" : "rgba(255,255,255,0.5)" }}>
-                      {fmt(d.fixo)}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
+              <div className="h-10" />
+            </>
+          )}
         </div>
       </main>
-
-      <footer className="border-t mt-10" style={{ borderColor: "rgba(255,255,255,0.05)" }}>
-        <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
-          <p className="text-xs" style={{ color: "rgba(255,255,255,0.2)" }}>
-            Calculadora de Dimensionamento Comercial — v1.0
-          </p>
-          <p className="text-xs" style={{ color: "rgba(255,255,255,0.15)" }}>
-            Benchmarks baseados em dados de mercado B2B high-ticket
-          </p>
-        </div>
-      </footer>
     </div>
   );
 }
