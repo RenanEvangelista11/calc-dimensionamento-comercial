@@ -113,7 +113,7 @@ function SelectInput({ label, options, value, onChange }: {
 // ─── Inputs panel (shared between sidebar and mobile drawer) ─────────────────
 
 function InputsPanel({
-  meta, setMeta, ticket, setTicket, conversao, setConversao, cpl, setCpl,
+  meta, setMeta, ticket, setTicket, conversao, setConversao, agendamento, setAgendamento, cpl, setCpl,
   regime, setRegime, modalidade, setModalidade, nivelCloser, setNivelCloser,
   nivelSDR, setNivelSDR, baseCalculo, setBaseCalculo, pEntradaStr, setPEntradaStr,
   hasData, c,
@@ -121,6 +121,7 @@ function InputsPanel({
   meta: string; setMeta: (v: string) => void;
   ticket: string; setTicket: (v: string) => void;
   conversao: string; setConversao: (v: string) => void;
+  agendamento: string; setAgendamento: (v: string) => void;
   cpl: string; setCpl: (v: string) => void;
   regime: Regime; setRegime: (v: Regime) => void;
   modalidade: Modalidade; setModalidade: (v: Modalidade) => void;
@@ -142,6 +143,7 @@ function InputsPanel({
       {/* CONVERSÃO */}
       <Section title="TAXAS DE CONVERSÃO">
         <NumberInput label="Taxa do Closer  %" value={conversao} onChange={setConversao} step={5} />
+        <NumberInput label="Taxa de Agendamento SDR  %" value={agendamento} onChange={setAgendamento} step={5} />
         <NumberInput label="Custo por Lead  R$" value={cpl}      onChange={setCpl}       step={10} />
       </Section>
 
@@ -308,10 +310,11 @@ function FunnelBar({ label, sublabel, mainValue, metrics, color, bgColor, alert 
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 export default function Home() {
-  const [meta,      setMeta]      = useState("");
-  const [ticket,    setTicket]    = useState("");
-  const [conversao, setConversao] = useState("");
-  const [cpl,       setCpl]       = useState("");
+  const [meta,        setMeta]        = useState("");
+  const [ticket,      setTicket]      = useState("");
+  const [conversao,   setConversao]   = useState("");
+  const [agendamento, setAgendamento] = useState("25");
+  const [cpl,         setCpl]         = useState("");
 
   const [regime,      setRegime]      = useState<Regime>("pj");
   const [modalidade,  setModalidade]  = useState<Modalidade>("remoto");
@@ -325,15 +328,16 @@ export default function Home() {
   const [drawerOpen, setDrawerOpen] = useState(false);
 
   const c = useMemo(() => {
-    const vMeta      = parseFloat(meta)      || 0;
-    const vTicket    = parseFloat(ticket)    || 0;
-    const vConversao = (parseFloat(conversao) || 0) / 100;
-    const vCpl       = parseFloat(cpl)       || 0;
-    const vPEntrada  = (parseFloat(pEntradaStr) || 40) / 100;
+    const vMeta        = parseFloat(meta)        || 0;
+    const vTicket      = parseFloat(ticket)      || 0;
+    const vConversao   = (parseFloat(conversao)   || 0) / 100;
+    const vAgendamento = (parseFloat(agendamento) || 25) / 100;
+    const vCpl         = parseFloat(cpl)          || 0;
+    const vPEntrada    = (parseFloat(pEntradaStr)  || 40) / 100;
 
     const vendas  = vTicket > 0 ? vMeta / vTicket : 0;
     const calls   = vConversao > 0 ? vendas / vConversao : 0;
-    const leads   = calls / SDR_BOOKING_RATE;
+    const leads   = vAgendamento > 0 ? calls / vAgendamento : 0;
     const trafego = leads * vCpl;
 
     const closer      = CLOSER_DATA[nivelCloser];
@@ -356,13 +360,13 @@ export default function Home() {
     const percCusto  = vMeta > 0 ? custoTotal / vMeta : 0;
 
     return {
-      vMeta, vTicket, vConversao, vCpl, vPEntrada,
+      vMeta, vTicket, vConversao, vAgendamento, vCpl, vPEntrada,
       vendas, calls, leads, trafego,
       capCloser, numClosers, numSDRs, custoCloser, custoSDR, folha,
       percComis, baseVenda, comisVenda, comisTotal, comisRate,
       custoTotal, percCusto,
     };
-  }, [meta, ticket, conversao, cpl, regime, modalidade, nivelCloser, nivelSDR, baseCalculo, pEntradaStr]);
+  }, [meta, ticket, conversao, agendamento, cpl, regime, modalidade, nivelCloser, nivelSDR, baseCalculo, pEntradaStr]);
 
   const hasData   = c.vMeta > 0 && c.vTicket > 0;
   const isHealthy = c.percCusto > 0 && c.percCusto <= 0.35;
@@ -403,7 +407,7 @@ export default function Home() {
       const tipo = c.percCusto > 0.35 ? "error" : "warn";
       let body = `Tráfego representa ${pct(pTraf, 0)} do custo total (${fmt(c.trafego)}).`;
       if (c.vConversao > 0 && c.vConversao < 0.20) {
-        const leadsNovos = (c.vendas / 0.25) / SDR_BOOKING_RATE;
+        const leadsNovos = (c.vendas / 0.25) / c.vAgendamento;
         const economia   = (c.leads - leadsNovos) * c.vCpl;
         body += ` Subir a conversão para 25% reduziria ~${fmtN(c.leads - leadsNovos, 0)} leads/mês — economia de ~${fmt(economia)} em tráfego.`;
       } else if (c.vCpl > c.vTicket * 0.015) {
@@ -450,7 +454,7 @@ export default function Home() {
 
   // Shared props for InputsPanel
   const inputProps = {
-    meta, setMeta, ticket, setTicket, conversao, setConversao, cpl, setCpl,
+    meta, setMeta, ticket, setTicket, conversao, setConversao, agendamento, setAgendamento, cpl, setCpl,
     regime, setRegime, modalidade, setModalidade, nivelCloser, setNivelCloser,
     nivelSDR, setNivelSDR, baseCalculo, setBaseCalculo, pEntradaStr, setPEntradaStr,
     hasData, c: { percComis: c.percComis, comisVenda: c.comisVenda, comisRate: c.comisRate },
@@ -615,7 +619,7 @@ export default function Home() {
                     { label: "Dias úteis",  value: "22" },
                   ]} />
 
-                <FunnelArrow label="÷ Agendamento SDR" rate="25%" />
+                <FunnelArrow label="÷ Agendamento SDR" rate={c.vAgendamento > 0 ? pct(c.vAgendamento) : "—%"} />
 
                 <FunnelBar label="LEADS NECESSÁRIOS" sublabel="Leads qualificados no ICP"
                   mainValue={`${fmtN(c.leads)} leads`} color="#06b6d4" bgColor="rgba(6,182,212,0.07)"
